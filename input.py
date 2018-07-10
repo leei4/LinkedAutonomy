@@ -1,125 +1,182 @@
 #! /usr/bin/env python
-
+from __future__ import division
 import serial
 import string
 import time
 import math
+import wiringpi
+import random #remove in final build for testing only
 from time import sleep
 
+
+
+import Adafruit_PCA9685
 import boat_info
 
-class PID:
-	"""
-	Discrete PID control
-	"""
+def PID(current_heading, target):
+    P=2.0
+    I=1.0
+    D=0.0
+    Derivator=0
+    Integrator=0
+    Integrator_max= 250     #1850
+    Integrator_min= 0     #1120
 
-	def __init__(self, P=2.0, I=1.0, D=0.0, Derivator=0, Integrator=0, Integrator_max=500, Integrator_min=-500):
+    set_point=0.0
+    error=0.0
+    
+    error = target - current_heading
+    
+    if(error > 180):
+         error = 360 - error
+    error * (-1)
+    
+    P_value = P * error
+    D_value = D * ( error - Derivator)
+    Derivator = error
 
-		self.Kp=P
-		self.Ki=I
-		self.Kd=D
-		self.Derivator=Derivator
-		self.Integrator=Integrator
-		self.Integrator_max=Integrator_max
-		self.Integrator_min=Integrator_min
+    Integrator = Integrator + error
 
-		self.set_point=0.0
-		self.error=0.0
+    if Integrator > Integrator_max:
+        Integrator = Integrator_max
+    elif Integrator < Integrator_min:
+        Integrator = Integrator_min
 
-	def update(self,current_value):
-		"""
-		Calculate PID output value for given reference input and feedback
-		"""
+    I_value = Integrator * I
+	
+    PID = P_value + I_value + D_value
+    
+    return PID
+#####################################################################
 
-		self.error = self.set_point - current_value
+def translate(value, leftMin, leftMax, rightMin, rightMax):
+    #calculate how 'wide' the range is
+    leftSpan = leftMax - leftMin
+    rightSpan = rightMax -  rightMin
+    
+    #convert each value to a range from 0 to 1 as a float
+    valueScaled = float(value - leftMin) / float(leftSpan)
+    
+    #convert the 0 to 1 range into a value in the right range
+    return rightMin + (valueScaled * rightSpan)
 
-		self.P_value = self.Kp * self.error
-		self.D_value = self.Kd * ( self.error - self.Derivator)
-		self.Derivator = self.error
+#calculations are pulled from sailbot
+def direction_to_point(c_lat,c_long, f_lat, f_long):
+    a = math.radians(c_lat)
+    b = math.radians(f_lat) 
+    d = math.radians(f_long - c_long)
+    
+    y = math.sin(d) * math.cos(b)
+    x = math.cos(a) * math.sin(b) - math.sin(a) * math.cos(b) * math.cos(d)
+    
+    return (math.degrees(math.atan2(y,x)) +360) % 360
 
-		self.Integrator = self.Integrator + self.error
-
-		if self.Integrator > self.Integrator_max:
-			self.Integrator = self.Integrator_max
-		elif self.Integrator < self.Integrator_min:
-			self.Integrator = self.Integrator_min
-
-		self.I_value = self.Integrator * self.Ki
-
-		PID = self.P_value + self.I_value + self.D_value
-
-		return PID
-
-	def setPoint(self,set_point):
-		"""
-		Initilize the setpoint of PID
-		"""
-		self.set_point = set_point
-		self.Integrator=0
-		self.Derivator=0
-
-	def setIntegrator(self, Integrator):
-		self.Integrator = Integrator
-
-	def setDerivator(self, Derivator):
-		self.Derivator = Derivator
-
-	def setKp(self,P):
-		self.Kp=P
-
-	def setKi(self,I):
-		self.Ki=I
-
-	def setKd(self,D):
-		self.Kd=D
-
-	def getPoint(self):
-		return self.set_point
-
-	def getError(self):
-		return self.error
-
-	def getIntegrator(self):
-		return self.Integrator
-
-	def getDerivator(self):
-		return self.Derivator
-
-def setRudderangle(targetHeading):
-    currentHeading = this.heading
-    turnAngle = targetHeading - currentHeading
+def setRudderangle(course, targetHeading):
+    turnAngle = targetHeading - course
     
     #calculation for rudder shift
     returnAngle = 90.0 - turnAngle / 10.0
     return returnAngle
 
 def destinationReached(currentLat, currentLong, finalLat, finalLong):
-        temp1 = finalLong     #temporarily stores the destination longitude
-        temp2 = finalLat      #temporarily stores the destination latitude
-        finalLong = currentLong    #flips longitude of destination and start
-        finalLat = currentLat      #flips latitude of destination and start
-        currentLong = temp1     #sets current longitude
-        currentLat = temp2      #sets current latitude
-        return currentLat, currentLong, finalLat, finalLong
+    if(currentLat == finalLat and currentLong == finalLong):
+        return True
+    else:
+        return False
 
-def Exit():
-    self.break()
+def wiringInit():
+    pwm = Adafruit_PCA9685.PCA9685()
+    servo_min = 150
+    servo_max = 600
+    
+def set_servo_pulse(channel, pulse):
+    pulse_length = 1000000
+    pulse_length //= 60
+    pulse *= 1000
+    pulse //= pulse_length
+    pwm.set_pwn(channel,0,pulse)
+    
+def adjust_rudder(val):
+        val= int(translate(val, -45, 45, 1070, 1900))
+        val = int(translate(val, 590, 2378, 150, 600))
+        print(val)
+        pwm.set_pwm(4,0,val)
+        
+def adjust_sails(val):
+    if(val > 180): val = 360-val
+    
+    if(val <= 40): val = 150
+    else: val = int(translate(val, 40, 180, 1070, 1900))
+    val = int(translate(val, 590, 2378, 150, 600))
+    
+    pwm.set_pwm(5,0,val)
     
 if __name__ == "__main__":
     
-    #time.sleep(100)
-    f_lat = 41.131412
-    f_long = -73.28398 
+    f_lat = 41.178363 #these will be automatically be transmitted by rpi base station
+    f_long = -73.271786 #see above comment
+    c_lat = -12
+    c_long = 23
     course = 32.0
+    currentAngle = 250
     
     output = " "
     ser = serial.Serial('/dev/ttyACM0',9600)
+    ser1 = serial.Serial('/dev/ttyACM1', 9600)
+    
+    wiringInit()
+    pwm = Adafruit_PCA9685.PCA9685()
+    pwm.set_pwm_freq(60)
+    servo_min = 150
+    servo_max = 600
+    
     while(True):  
-        #ser.write('3')
-        output = ser.readline()
-        print(output)
-    print("stopped") 
+        time.sleep(1)
+        output = ser1.readline()
+        output2 = ser.readline()
+        print(output)    #remove in final build
+        print(output2)
+        
+        #insert code to take inputs from arduino and make calculations
+        #latitude,longitude, course(degrees), # of satellites, wind angle(degrees)
+        output1 = output.split(",")
+        output3 = output2.split(",")
+        
+        while(len(output1) < 3 or len(output2) < 4):
+            print("bad output")
+            output = ser.readline()
+            output1 = output.split(",")
+            
+            output2 = ser1.readline()
+            output3 = output2.split(",")
+        
+        windAngle = float(output1[0])
+        rudderAngle = float(output1[1])
+        winchAngle = float(output1[2])
+        
+        c_lat = float(output3[0])
+        c_long = float(output3[1])
+        course = float(output3[2])
+        satelliteCount = int(output3[3])
+        '''
+        if(winchAngle == 0 and rudderAngle == 0):
+            adjust_rudder(0) #Shift this back when reenabling the if check for automation 
+            continue
+        '''    
+        #removes newline characters
+        windAngle = int(windAngle)
+        print(windAngle)
+        adjust_sails(windAngle)
+        
+        #Function that occurs if we reach our destination. 
+        if(destinationReached(c_lat, c_long, f_lat, f_long)== False):
+            #calculate destination heading
+#           dest_heading = findHeading(c_lat, c_long, f_lat, f_long,course)
+            targetCourse = direction_to_point(c_lat, c_long, f_lat, f_long)
+            rudderAngle = int(PID(course,targetCourse))
+            rudderAngle = int(translate(rudderAngle, 0, 360, -45, 45))
+            print(rudderAngle)
+            currentAngle = adjust_rudder(int(rudderAngle))  
+        
+    print("stopped") #this line should never occur  
 
-    #Function that occurs if we reach our destination. 
-    if(c_long == f_long and c_lat == f_lat):
-        destinationReached(c_lat, c_long, f_lat, f_long)
