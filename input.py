@@ -8,8 +8,6 @@ import wiringpi
 import random #remove in final build for testing only
 from time import sleep
 
-
-
 import Adafruit_PCA9685
 import boat_info
 
@@ -98,18 +96,29 @@ def set_servo_pulse(channel, pulse):
     
 def adjust_rudder(val):
         val= int(translate(val, -45, 45, 1070, 1900))
-        val = int(translate(val, 590, 2378, 150, 600))
-        print(val)
+        val = int(translate(val, 590, 2378, 200, 500))
         pwm.set_pwm(4,0,val)
+        print("rudder",val)
         
 def adjust_sails(val):
     if(val > 180): val = 360-val
     
-    if(val <= 40): val = 150
-    else: val = int(translate(val, 40, 180, 1070, 1900))
-    val = int(translate(val, 590, 2378, 150, 600))
+    if(val <= 40): val = 40
     
+    val = int(translate(val, 40, 180, 1070, 1900))
+    val = int(translate(val, 590, 2378, 150, 600))
     pwm.set_pwm(5,0,val)
+    
+def manual_sails(val):
+    val = int(translate(val, 590, 2378, 150, 600))
+    pwm.set_pwm(5,0,val)
+    print("sails", val)
+    
+def manual_rudder(val):
+    val = int(translate(val, 590, 2378, 200, 400))
+    pwm.set_pwm(4,0,val)
+    print("rudder", val)
+    
     
 if __name__ == "__main__":
     
@@ -121,8 +130,7 @@ if __name__ == "__main__":
     currentAngle = 250
     
     output = " "
-    ser = serial.Serial('/dev/ttyACM0',9600)
-    ser1 = serial.Serial('/dev/ttyACM1', 9600)
+    ser = serial.Serial('/dev/ttyACM0', 115200)
     
     wiringInit()
     pwm = Adafruit_PCA9685.PCA9685()
@@ -132,51 +140,45 @@ if __name__ == "__main__":
     
     while(True):  
         time.sleep(1)
-        output = ser1.readline()
-        output2 = ser.readline()
-        print(output)    #remove in final build
-        print(output2)
+        output = ser.readline()
         
         #insert code to take inputs from arduino and make calculations
         #latitude,longitude, course(degrees), # of satellites, wind angle(degrees)
         output1 = output.split(",")
-        output3 = output2.split(",")
         
-        while(len(output1) < 3 or len(output2) < 4):
+        while(len(output1) < 7 or output1[0] == ""):
             print("bad output")
             output = ser.readline()
             output1 = output.split(",")
-            
-            output2 = ser1.readline()
-            output3 = output2.split(",")
         
-        windAngle = float(output1[0])
-        rudderAngle = float(output1[1])
-        winchAngle = float(output1[2])
+        c_lat = float(output1[0])
+        c_long = float(output1[1])
+        course = float(output1[2])
+        satelliteCount = (output1[3])
+        windAngle = (output1[4])
+        rudderAngle = (output1[5])
+        winchAngle = (output1[6])
         
-        c_lat = float(output3[0])
-        c_long = float(output3[1])
-        course = float(output3[2])
-        satelliteCount = int(output3[3])
-        '''
-        if(winchAngle == 0 and rudderAngle == 0):
-            adjust_rudder(0) #Shift this back when reenabling the if check for automation 
-            continue
-        '''    
-        #removes newline characters
-        windAngle = int(windAngle)
-        print(windAngle)
-        adjust_sails(windAngle)
+        satelliteCount = int(satelliteCount.strip("\r\n"))
+
         
-        #Function that occurs if we reach our destination. 
-        if(destinationReached(c_lat, c_long, f_lat, f_long)== False):
-            #calculate destination heading
-#           dest_heading = findHeading(c_lat, c_long, f_lat, f_long,course)
-            targetCourse = direction_to_point(c_lat, c_long, f_lat, f_long)
-            rudderAngle = int(PID(course,targetCourse))
-            rudderAngle = int(translate(rudderAngle, 0, 360, -45, 45))
-            print(rudderAngle)
-            currentAngle = adjust_rudder(int(rudderAngle))  
+        if(winchAngle != 0 and rudderAngle != 0):
+            print(manual)
+            manual_sail(winchAngle)
+            manual_rudder(rudderAngle) #Shift this back when reenabling the if check for automation 
+        else:
+            windAngle = int(windAngle)
+            adjust_sails(windAngle)
+      
+            #Function that occurs if we reach our destination. 
+            if(destinationReached(c_lat, c_long, f_lat, f_long) == False):
+                #calculate destination heading
+                #dest_heading = findHeading(c_lat, c_long, f_lat, f_long,course)
+                targetCourse = direction_to_point(c_lat, c_long, f_lat, f_long)
+                rudderAngle = int(PID(course,targetCourse))
+                print("PID",rudderAngle)
+                rudderAngle = int(translate(rudderAngle, 0, 360, -45, 45))
+
+                currentAngle = adjust_rudder(int(rudderAngle))  
         
     print("stopped") #this line should never occur  
-
