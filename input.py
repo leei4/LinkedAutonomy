@@ -6,12 +6,10 @@ import string
 import time
 import math
 import wiringpi
-import random #remove in final build for testing only
-from time import sleep
 
 import Adafruit_PCA9685
-import boat_info
 
+#Declaration of Class that communicates the boat information
 class QuoteProtocol(protocol.Protocol):
     def __init__(self, factory):
         self.factory = factory
@@ -19,10 +17,12 @@ class QuoteProtocol(protocol.Protocol):
         self.sendQuote()
     def sendQuote(self):
         self.transport.write(self.factory.quote)
+    #check to make sure that data is passed from client to server
     def dataReceived(self, data):
         print("Received quote:", data)
         self.transport.loseConnection()
         
+#processes information
 class QuoteClientFactory(protocol.ClientFactory):
     def __init__(self, quote):
         self.quote = quote
@@ -34,7 +34,7 @@ class QuoteClientFactory(protocol.ClientFactory):
     def clientConnectionLost(self, connector, reason):
         print 'connection lost:', reason.getErrorMessage()
         maybeStopReactor()
-
+#transmission function to stop after sending all the data
 def maybeStopReactor():
     global quote_counter
     quote_counter -= 1
@@ -216,6 +216,8 @@ if __name__ == "__main__":
                 rudderAngle = int(translate(rudderAngle, 0, 360, -45, 45))
 
                 currentAngle = adjust_rudder(int(rudderAngle))  
+               
+                #used for transmission of information. Converts all values into strings and passes them along to main server
                 commValues = [str(c_lat), str(c_long), str(course),str(windAngle.toString)]
                 communicate(commValues)
     print("stopped") #this line should never occur  
