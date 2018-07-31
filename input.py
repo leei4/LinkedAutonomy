@@ -1,5 +1,6 @@
 #! /usr/bin/env python
 from __future__ import division
+from twisted.internet import reactor, protocol
 import serial
 import string
 import time
@@ -11,6 +12,41 @@ from time import sleep
 import Adafruit_PCA9685
 import boat_info
 
+class QuoteProtocol(protocol.Protocol):
+    def __init__(self, factory):
+        self.factory = factory
+    def connectionMade(self):
+        self.sendQuote()
+    def sendQuote(self):
+        self.transport.write(self.factory.quote)
+    def dataReceived(self, data):
+        print("Received quote:", data)
+        self.transport.loseConnection()
+        
+class QuoteClientFactory(protocol.ClientFactory):
+    def __init__(self, quote):
+        self.quote = quote
+    def buildProtocol(self, addr):
+        return QuoteProtocol(self)
+    def clientConnectionFailed(self, connector, reason):
+        print 'connection failed:', reason.getErrorMessage()
+        maybeStopReactor()
+    def clientConnectionLost(self, connector, reason):
+        print 'connection lost:', reason.getErrorMessage()
+        maybeStopReactor()
+
+def maybeStopReactor():
+    global quote_counter
+    quote_counter -= 1
+    if not quote_counter:
+        reactor.stop()
+def communicate(quotes):
+    quote_counter = len(quotes)
+
+    for quote in quotes:
+        reactor.connectTCP('localhost', 8000, QuoteClientFactory(quote))
+    reactor.run()
+    
 def PID(current_heading, target):
     P=2.0
     I=1.0
@@ -150,7 +186,7 @@ if __name__ == "__main__":
             print("bad output")
             output = ser.readline()
             output1 = output.split(",")
-        
+        print(output)
         c_lat = float(output1[0])
         c_long = float(output1[1])
         course = float(output1[2])
@@ -163,7 +199,7 @@ if __name__ == "__main__":
 
         
         if(winchAngle != 0 and rudderAngle != 0):
-            print(manual)
+            print("manual")
             manual_sail(winchAngle)
             manual_rudder(rudderAngle) #Shift this back when reenabling the if check for automation 
         else:
@@ -180,5 +216,6 @@ if __name__ == "__main__":
                 rudderAngle = int(translate(rudderAngle, 0, 360, -45, 45))
 
                 currentAngle = adjust_rudder(int(rudderAngle))  
-        
+                commValues = [str(c_lat), str(c_long), str(course),str(windAngle.toString)]
+                communicate(commValues)
     print("stopped") #this line should never occur  
